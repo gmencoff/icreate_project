@@ -202,3 +202,8 @@ include_directories(
 add_executable(turtlecontrol src/turtlecontrol.cpp)
 target_link_libraries(turtlecontrol ${catkin_LIBRARIES})
 add_dependencies(turtlecontrol beginner_tutorials_generate_messages_cpp)
+
+add_executable(createcontrol src/createcontrol.cpp)
+target_link_libraries(createcontrol ${catkin_LIBRARIES})
+add_dependencies(createcontrol beginner_tutorials_generate_messages_cpp)
+
