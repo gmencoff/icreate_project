@@ -25,8 +25,13 @@ private:
   float theta_r; //theta r
   float mag_r; // length of r
   int loccalled;
+  int loop_frequency; // stores loop frequency
+  float loop_rate; // stores loop rate
+  std::vector<float>  vel; // stores velocity
   static const float lin_vel_max; // stores the maximum allowable linear velocity
   static const float rot_vel_max; // stores the maximum allowable rotational velocity
+  static const float lin_accel_max; // stores max allowed linear acceleration
+  static const float rot_accel_max; // stores max allowed roatational acceleration
   static const float theta_reduced_speed; // stores the theta value where rotational velcotiy reduction should occur
   static const float r_error; // stores the allowable distance error from the desired location
 
@@ -34,8 +39,7 @@ private:
 public:
 
   //constructor function initializes values
-  Createdriver()
-  {
+  Createdriver() : vel(2) {
     x_c=0;
     y_c=0;
     theta_c=0;
@@ -43,7 +47,10 @@ public:
     y_d=0;
     theta_d=0;
     loccalled=0;
-  };
+    loop_frequency=100; //set loop frequency to 100 Hz
+    loop_rate=1/(float)loop_frequency;
+    vel[0]=0.0;vel[1]=0.0;
+    };
 
   // gets current position
   void poseCallback(const nav_msgs::Odometry::ConstPtr& msg){
@@ -67,7 +74,7 @@ public:
       theta_c=2*M_PI+theta_c;
     };
 
-    ROS_INFO_STREAM("roll: " << roll << "pitch: " << pitch <<  "yaw: " << yaw);
+    //ROS_INFO_STREAM("roll: " << roll << "pitch: " << pitch <<  "yaw: " << yaw);
 
     };
 
@@ -78,9 +85,17 @@ public:
     loccalled=1;
   };
 
+
+  //get loop frequency
+  int getLoopF(){
+    return loop_frequency;
+  };
+
   // calculate desired linear velocity and angular velocity, outputs vector [lin,ang]
   std::vector<float> getVel(){
-    std::vector<float>  vel(2); vel[0]=0;vel[1]=0;
+
+    std::vector<float> oldvel(2);
+    oldvel[0]=vel[0];oldvel[1]=vel[1]; // old velocity is equal to velocity when this function was called
 
     // if desured location has been set, update velocity
     if (loccalled==1){
@@ -122,10 +137,10 @@ public:
 
       // set velocity
       if (mag_r<r_error){
-      // if length of r < error allowed, then velocity is 0
+      // if length of r < error allowed, then don't move
         vel[0]=0; vel[1]=0;
       }
-      else if (abs(theta_d)>=theta_reduced_speed){
+      else if (fabs(theta_d)>=theta_reduced_speed){
       // if the desired theta is greater than the reduced speed theta, set theta to max
         vel[0]=0;
 
@@ -139,23 +154,110 @@ public:
           vel[1]=-rot_vel_max;
         };
 
+        float lin_diff=vel[0]-oldvel[0];
+        float rot_diff=vel[1]-oldvel[1];
+
+        int lin_diff_dir=1; // stores sign of linear difference
+        int rot_diff_dir=1; // stores sign of rotational difference
+
+        if(lin_diff<0){
+        	lin_diff_dir=-1;
+        };
+        if(rot_diff<0){
+        	rot_diff_dir=-1;
+        };
+
+        // check whether linear acceleration is exceeded, if it is than add max accel to current vel
+        if((fabs(lin_diff)/loop_rate)>lin_accel_max){
+           vel[0]=oldvel[0]+lin_diff_dir*lin_accel_max*loop_rate; //set new velocity
+        };
+
+        //check whether max rot acceleration is exceeded, if it is than add max accel to current vel
+        if((fabs(rot_diff)/loop_rate)>rot_accel_max){
+          vel[1]=oldvel[1]+rot_diff_dir*rot_accel_max*loop_rate;
+        };
+
+        //check whether max lin vel is exceeded, if it is, then set to max
+        if(fabs(vel[0])>lin_vel_max){
+        	if(vel[0]>0){
+        		vel[0]=lin_vel_max;
+        	}
+        	else{
+        		vel[0]=-lin_vel_max;
+        	};
+        };
+
+        //check whether max rot vel is exceeded, if it is, then set to max
+        if(fabs(vel[1])>rot_vel_max){
+        	if(vel[1]>0){
+        		vel[1]=rot_vel_max;
+        	}
+        	else{
+        		vel[1]=-rot_vel_max;
+        	};
+        };
+
       }
-      else if (abs(theta_d)<theta_reduced_speed){
-      // if the desired theta is less than the reduced speed theta, set theta according to control rule
+      else if (fabs(theta_d)<theta_reduced_speed){
+
+        // if the desired theta is less than the reduced speed theta, set theta according to control rule
         vel[0]=lin_vel_max;
         vel[1]=rot_vel_max/theta_reduced_speed*theta_d;
+
+        float lin_diff=vel[0]-oldvel[0];
+        float rot_diff=vel[1]-oldvel[1];
+
+        int lin_diff_dir=1; // stores sign of linear difference
+        int rot_diff_dir=1; // stores sign of rotational difference
+
+        if(lin_diff<0){
+        	lin_diff_dir=-1;
+        };
+        if(rot_diff<0){
+        	rot_diff_dir=-1;
+        };
+
+
+        // check whether linear acceleration is exceeded, if it is than add max accel to current vel
+        if((fabs(lin_diff)/loop_rate)>lin_accel_max){
+           vel[0]=oldvel[0]+lin_diff_dir*lin_accel_max*loop_rate; //set new velocity
+        };
+
+        //check whether max rot acceleration is exceeded, if it is than add max accel to current vel
+        if((fabs(rot_diff)/loop_rate)>rot_accel_max){
+          vel[1]=oldvel[1]+rot_diff_dir*rot_accel_max*loop_rate;
+        };
+
+        //check whether max lin vel is exceeded, if it is, then set to max
+        if(fabs(vel[0])>lin_vel_max){
+        	if(vel[0]>0){
+        		vel[0]=lin_vel_max;
+        	}
+        	else{
+        		vel[0]=-lin_vel_max;
+        	};
+        };
+
+        //check whether max rot vel is exceeded, if it is, then set to max
+        if(fabs(vel[1])>rot_vel_max){
+        	if(vel[1]>0){
+        		vel[1]=rot_vel_max;
+        	}
+        	else{
+        		vel[1]=-rot_vel_max;
+        	};
+        };
+        
+        ROS_INFO_STREAM("vel0: " << vel[0] << "vel1: " << vel[1] << "\n" << "oldvel0: " << oldvel[0] << "oldvel1: " << oldvel[1] << "\n");
+
       };
-    ROS_INFO_STREAM("theta_d: " << theta_d << "\n");
-    ROS_INFO_STREAM("theta_c: " << theta_c << "\n");
-    ROS_INFO_STREAM("theta_r: " << theta_r << "\n");
+    //ROS_INFO_STREAM("vel0: " << vel[0] << "vel1: " << vel[1] "\n");
+    //ROS_INFO_STREAM("theta_c: " << theta_c << "\n");
+    //ROS_INFO_STREAM("theta_r: " << theta_r << "\n");
     //ROS_INFO_STREAM("roll: " << roll << "pitch: " << pitch <<  "yaw: " << yaw);
 
-    }
-
-    // if desired location has not been set, velocity should remain 0
-    else{
-      return vel;
     };
+  return vel;
   };
 
 };
@@ -163,8 +265,11 @@ public:
 // Define constant driver variables
 const float Createdriver::lin_vel_max=.5;
 const float Createdriver::rot_vel_max=4.25;
-const float Createdriver::theta_reduced_speed=3.14/4;
+const float Createdriver::theta_reduced_speed=3.14/2;
 const float Createdriver::r_error=.2;
+const float Createdriver::lin_accel_max=.5;
+const float Createdriver::rot_accel_max=7;
+
 
 
 //void poseCallback(const turtlesim::Pose::ConstPtr& msg){
@@ -189,7 +294,7 @@ int main(int argc, char **argv)
   //ros::Subscriber sub = n.subscribe("/turtle1/pose",1000,poseCallback);
 
   // 1 Hz publishing rate is the same as the create internal rate
-  ros::Rate loop_rate(10);
+  ros::Rate loop_rate(createdriver.getLoopF());
 
 
   int count = 0; // count number of times looped
